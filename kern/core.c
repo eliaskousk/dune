@@ -155,7 +155,7 @@ static int __init dune_init(void)
 
 	printk(KERN_ERR "Dune module loaded\n");
 
-	if ((r = vmx_init())) {
+	if ((r = svm_init())) {
 		printk(KERN_ERR "dune: failed to initialize vmx\n");
 		return r;
 	}
@@ -163,7 +163,7 @@ static int __init dune_init(void)
 	r = misc_register(&dune_dev);
 	if (r) {
 		printk(KERN_ERR "dune: misc device register failed\n");
-		vmx_exit();
+		svm_exit();
 	}
 
 	return r;
@@ -173,7 +173,7 @@ static void __exit dune_exit(void)
 {
 	perf_unregister_guest_info_callbacks(&dune_guest_cbs);
 	misc_deregister(&dune_dev);
-	vmx_exit();
+	svm_exit();
 }
 
 module_init(dune_init);
