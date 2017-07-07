@@ -1,13 +1,14 @@
 /*
- * vmx.h - header file for USM VMX driver.
+ * svm.h - header file for AMD-V SVM driver.
  */
 
 #include <linux/mmu_notifier.h>
 #include <linux/types.h>
-#include <asm/vmx.h>
+//#include <asm/vmx.h>
+#include <asm/svm.h>
 #include <linux/kvm_types.h>
 
-DECLARE_PER_CPU(struct vmx_vcpu *, local_vcpu);
+DECLARE_PER_CPU(struct svm_vcpu *, local_vcpu);
 
 struct vmcs {
 	u32 revision_id;
@@ -15,17 +16,17 @@ struct vmcs {
 	char data[0];
 };
 
-struct vmx_capability {
+struct svm_capability {
 	u32 ept;
 	u32 vpid;
 	int has_load_efer:1;
 };
 
-extern struct vmx_capability vmx_capability;
+extern struct svm_capability svm_capability;
 
 #define NR_AUTOLOAD_MSRS 8
 
-enum vmx_reg {
+enum svm_reg {
 	VCPU_REGS_RAX = 0,
 	VCPU_REGS_RCX = 1,
 	VCPU_REGS_RDX = 2,
@@ -48,7 +49,7 @@ enum vmx_reg {
 	NR_VCPU_REGS
 };
 
-struct vmx_vcpu {
+struct svm_vcpu {
 	struct list_head list;
 	int cpu;
 	int vpid;
@@ -71,8 +72,8 @@ struct vmx_vcpu {
 
 	struct msr_autoload {
 		unsigned nr;
-		struct vmx_msr_entry guest[NR_AUTOLOAD_MSRS];
-		struct vmx_msr_entry host[NR_AUTOLOAD_MSRS];
+		struct svm_msr_entry guest[NR_AUTOLOAD_MSRS];
+		struct svm_msr_entry host[NR_AUTOLOAD_MSRS];
 	} msr_autoload;
 
 	struct vmcs *vmcs;
@@ -81,28 +82,28 @@ struct vmx_vcpu {
 	unsigned long guest_kernel_gs_base;
 };
 
-extern __init int vmx_init(void);
-extern void vmx_exit(void);
-extern void vmx_cleanup(void);
+extern __init int svm_init(void);
+extern void svm_exit(void);
+extern void svm_cleanup(void);
 
-extern int vmx_launch(struct dune_config *conf, int64_t *ret_code);
+extern int svm_launch(struct dune_config *conf, int64_t *ret_code);
 
-extern int vmx_init_ept(struct vmx_vcpu *vcpu);
-extern int vmx_create_ept(struct vmx_vcpu *vcpu);
-extern void vmx_destroy_ept(struct vmx_vcpu *vcpu);
+extern int svm_init_npt(struct svm_vcpu *vcpu);
+extern int svm_create_npt(struct svm_vcpu *vcpu);
+extern void svm_destroy_npt(struct svm_vcpu *vcpu);
 
 extern int
-vmx_do_ept_fault(struct vmx_vcpu *vcpu, unsigned long gpa,
+svm_do_npt_fault(struct svm_vcpu *vcpu, unsigned long gpa,
 		 unsigned long gva, int fault_flags);
 
-extern void vmx_ept_sync_vcpu(struct vmx_vcpu *vcpu);
-extern void vmx_ept_sync_individual_addr(struct vmx_vcpu *vcpu, gpa_t gpa);
+extern void svm_npt_sync_vcpu(struct svm_vcpu *vcpu);
+extern void svm_npt_sync_individual_addr(struct svm_vcpu *vcpu, gpa_t gpa);
 
 static __always_inline unsigned long vmcs_readl(unsigned long field)
 {
         unsigned long value;
 
-        asm volatile (ASM_VMX_VMREAD_RDX_RAX
+        asm volatile (ASM_SVM_VMREAD_RDX_RAX
                       : "=a"(value) : "d"(field) : "cc");
         return value;
 }
