@@ -62,7 +62,7 @@ static struct perf_guest_info_callbacks dune_guest_cbs = {
 
 static int dune_enter(struct dune_config *conf, int64_t *ret)
 {
-	return vmx_launch(conf, ret);
+	return svm_launch(conf, ret);
 }
 
 static long dune_dev_ioctl(struct file *filp,
@@ -128,7 +128,7 @@ out:
 
 static int dune_dev_release(struct inode *inode, struct file *file)
 {
-	vmx_cleanup();
+	svm_cleanup();
 	return 0;
 }
 
@@ -156,7 +156,7 @@ static int __init dune_init(void)
 	printk(KERN_ERR "Dune module loaded\n");
 
 	if ((r = svm_init())) {
-		printk(KERN_ERR "dune: failed to initialize vmx\n");
+		printk(KERN_ERR "dune: failed to initialize svm\n");
 		return r;
 	}
 
