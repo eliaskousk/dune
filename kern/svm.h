@@ -4,7 +4,7 @@
 
 #include <linux/mmu_notifier.h>
 #include <linux/types.h>
-//#include <asm/vmx.h>
+#include <asm/vmx.h>
 #include <asm/svm.h>
 #include <linux/kvm_types.h>
 

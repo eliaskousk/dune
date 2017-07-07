@@ -25,7 +25,7 @@
 #include <asm/uaccess.h>
 
 #include "dune.h"
-#include "vmx.h"
+#include "svm.h"
 #include "preempttrap.h"
 
 MODULE_LICENSE("GPL");

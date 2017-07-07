@@ -1,7 +1,7 @@
 /**
- *  vmx.c - The Intel VT-x driver for Dune
+ *  svm.c - The AMD SVM driver for Dune
  *
- * This file is derived from Linux KVM VT-x support.
+ * This file is derived from Linux KVM AMD-V (SVM) support.
  * Copyright (C) 2006 Qumranet, Inc.
  * Copyright 2010 Red Hat, Inc. and/or its affiliates.
  *
@@ -12,30 +12,31 @@
  * This modified version is simpler because it avoids the following
  * features that are not requirements for Dune:
  *  * Real-mode emulation
- *  * Nested VT-x support
+ *  * Nested SVM support
  *  * I/O hardware emulation
  *  * Any of the more esoteric X86 features and registers
  *  * KVM-specific functionality
  *
  * In essence we provide only the minimum functionality needed to run
- * a process in vmx non-root mode rather than the full hardware emulation
+ * a process in svm non-root mode rather than the full hardware emulation
  * needed to support an entire OS.
  *
  * This driver is a research prototype and as such has the following
  * limitations:
  *
  * FIXME: Backward compatability is currently a non-goal, and only recent
- * full-featured (EPT, PCID, VPID, etc.) Intel hardware is supported by this
- * driver.
+ * full-featured (NPT, PCID, VPID, etc.) AMD hardware is supported by this
+ * driver. Tested on the AMD Ryzen 1500X processor.
  *
- * FIXME: Eventually we should handle concurrent user's of VT-x more
+ * FIXME: Eventually we should handle concurrent user's of SVM more
  * gracefully instead of requiring exclusive access. This would allow
  * Dune to interoperate with KVM and other HV solutions.
  *
  * FIXME: We need to support hotplugged physical CPUs.
  *
  * Authors:
- *   Adam Belay   <abelay@stanford.edu>
+ *   Adam Belay            <abelay@stanford.edu>
+ *   Elias Kouskoumvekakis <eliask.kousk@stromasys.com>
  */
 
 #include <linux/module.h>
@@ -54,15 +55,16 @@
 
 #include <asm/desc.h>
 #include <asm/vmx.h>
+#include <asm/svm.h>
 #include <asm/unistd_64.h>
 #include <asm/virtext.h>
 #include <asm/traps.h>
 
 #include "dune.h"
-#include "vmx.h"
+#include "svm.h"
 #include "compat.h"
 
-static atomic_t vmx_enable_failed;
+static atomic_t svm_enable_failed;
 
 static DECLARE_BITMAP(svm_vpid_bitmap, VMX_NR_VPIDS);
 static DEFINE_SPINLOCK(svm_vpid_lock);
