@@ -103,7 +103,7 @@ static __always_inline unsigned long vmcs_readl(unsigned long field)
 {
         unsigned long value;
 
-        asm volatile (ASM_SVM_VMREAD_RDX_RAX
+        asm volatile (ASM_VMX_VMREAD_RDX_RAX
                       : "=a"(value) : "d"(field) : "cc");
         return value;
 }
