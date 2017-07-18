@@ -26,3 +26,5 @@ test/test
 test/test_sandbox
 test/timetest
 tags
+/.idea/
+/cmake-build-debug/
