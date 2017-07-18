@@ -44,6 +44,32 @@ set(LINUX_HEADERS
         ${LINUX_PATH}/include/generated
         ${LINUX_PATH}/include/generated/uapi
         ${LINUX_PATH}/include/uapi)
-TARGET_INCLUDE_DIRECTORIES(dummy_mod PUBLIC kern)
-TARGET_INCLUDE_DIRECTORIES(dummy_mod PUBLIC kern/kvm)
 TARGET_INCLUDE_DIRECTORIES(dummy_mod PUBLIC ${LINUX_HEADERS})
+TARGET_INCLUDE_DIRECTORIES(dummy_mod PUBLIC kern kern/kvm)
+
+#
+# Dune Tests
+#
+
+file(GLOB TEST_SOURCE_FILES "test/*.c")
+add_library(dummy_test ${TEST_SOURCE_FILES})
+
+TARGET_INCLUDE_DIRECTORIES(dummy_test PUBLIC . test)
+
+#
+# Dune Benchmarks
+#
+
+file(GLOB BENCH_SOURCE_FILES "bench/*.c")
+add_library(dummy_bench ${BENCH_SOURCE_FILES})
+
+TARGET_INCLUDE_DIRECTORIES(dummy_bench PUBLIC . bench)
+
+#
+# Dune Apps
+#
+
+file(GLOB APP_SOURCE_FILES "apps/sandbox/*.c" "apps/ufirewall/*.c" "apps/wedge/*.c")
+add_library(dummy_app ${APP_SOURCE_FILES})
+
+TARGET_INCLUDE_DIRECTORIES(dummy_app PUBLIC . apps/sandbox apps/ufirewall apps/wedge)
