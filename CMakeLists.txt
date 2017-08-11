@@ -20,7 +20,7 @@ TARGET_INCLUDE_DIRECTORIES(dummy_lib PUBLIC libdune)
 # Dune Kernel Module
 #
 
-file(GLOB MOD_SOURCE_FILES "kern/*.c" "kern/kvm/*.c")
+file(GLOB MOD_SOURCE_FILES "kern/*.c" "kern/*.h")
 add_library(dummy_mod ${MOD_SOURCE_FILES})
 
 #set(LINUX_HEADERS_VERSION 4.4.0-83)
