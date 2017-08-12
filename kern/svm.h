@@ -8,6 +8,95 @@
 #include <asm/svm.h>
 #include <linux/kvm_types.h>
 
+// ========================
+// Start of KVM SVM defines
+// ========================
+
+struct vcpu_svm {
+	struct kvm_vcpu vcpu;
+	struct vmcb *vmcb;
+	unsigned long vmcb_pa;
+	struct svm_cpu_data *svm_data;
+	uint64_t asid_generation;
+	uint64_t sysenter_esp;
+	uint64_t sysenter_eip;
+	uint64_t tsc_aux;
+
+	u64 next_rip;
+
+	u64 host_user_msrs[NR_HOST_SAVE_USER_MSRS];
+	struct {
+		u16 fs;
+		u16 gs;
+		u16 ldt;
+		u64 gs_base;
+	} host;
+
+	u32 *msrpm;
+
+	ulong nmi_iret_rip;
+
+	struct nested_state nested;
+
+	bool nmi_singlestep;
+
+	unsigned int3_injected;
+	unsigned long int3_rip;
+	u32 apf_reason;
+
+	/* cached guest cpuid flags for faster access */
+	bool nrips_enabled	: 1;
+
+	u32 ldr_reg;
+	struct page *avic_backing_page;
+	u64 *avic_physical_id_cache;
+	bool avic_is_running;
+
+	/*
+	 * Per-vcpu list of struct amd_svm_iommu_ir:
+	 * This is used mainly to store interrupt remapping information used
+	 * when update the vcpu affinity. This avoids the need to scan for
+	 * IRTE and try to match ga_tag in the IOMMU driver.
+	 */
+	struct list_head ir_list;
+	spinlock_t ir_list_lock;
+};
+
+struct svm_cpu_data {
+	int cpu;
+
+	u64 asid_generation;
+	u32 max_asid;
+	u32 next_asid;
+	struct kvm_ldttss_desc *tss_desc;
+
+	struct page *save_area;
+};
+
+enum {
+	VMCB_INTERCEPTS, /* Intercept vectors, TSC offset,
+			    pause filter count */
+	VMCB_PERM_MAP,   /* IOPM Base and MSRPM Base */
+	VMCB_ASID,	 /* ASID */
+	VMCB_INTR,	 /* int_ctl, int_vector */
+	VMCB_NPT,        /* npt_en, nCR3, gPAT */
+	VMCB_CR,	 /* CR0, CR3, CR4, EFER */
+	VMCB_DR,         /* DR6, DR7 */
+	VMCB_DT,         /* GDT, IDT */
+	VMCB_SEG,        /* CS, DS, SS, ES, CPL */
+	VMCB_CR2,        /* CR2 only */
+	VMCB_LBR,        /* DBGCTL, BR_FROM, BR_TO, LAST_EX_FROM, LAST_EX_TO */
+	VMCB_AVIC,       /* AVIC APIC_BAR, AVIC APIC_BACKING_PAGE,
+			  * AVIC PHYSICAL_TABLE pointer,
+			  * AVIC LOGICAL_TABLE pointer
+			  */
+	VMCB_DIRTY_MAX,
+};
+
+// ======================
+// End of KVM SVM defines
+// ======================
+
 DECLARE_PER_CPU(struct svm_vcpu *, local_vcpu);
 
 struct vmcs {

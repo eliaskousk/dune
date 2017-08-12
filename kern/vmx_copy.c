@@ -1096,17 +1096,6 @@ static void ept_set_mmio_spte_mask(void)
 	kvm_mmu_set_mmio_spte_mask(VMX_EPT_MISCONFIG_WX_VALUE);
 }
 
-static void
-vmx_patch_hypercall(struct kvm_vcpu *vcpu, unsigned char *hypercall)
-{
-	/*
-	 * Patch in the VMCALL instruction:
-	 */
-	hypercall[0] = 0x0f;
-	hypercall[1] = 0x01;
-	hypercall[2] = 0xc1;
-}
-
 void vmx_enable_tdp(void)
 {
 	kvm_mmu_set_mask_ptes(VMX_EPT_READABLE_MASK,
