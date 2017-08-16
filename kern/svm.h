@@ -4,19 +4,59 @@
 
 #include <linux/mmu_notifier.h>
 #include <linux/types.h>
-#include <asm/vmx.h>
 #include <asm/svm.h>
 #include <linux/kvm_types.h>
 
-// ========================
-// Start of KVM SVM defines
-// ========================
+enum {
+	VMCB_INTERCEPTS, /* Intercept vectors, TSC offset,
+			    pause filter count */
+	VMCB_PERM_MAP,   /* IOPM Base and MSRPM Base */
+	VMCB_ASID,	 /* ASID */
+	VMCB_INTR,	 /* int_ctl, int_vector */
+	VMCB_NPT,        /* npt_en, nCR3, gPAT */
+	VMCB_CR,	 /* CR0, CR3, CR4, EFER */
+	VMCB_DR,         /* DR6, DR7 */
+	VMCB_DT,         /* GDT, IDT */
+	VMCB_SEG,        /* CS, DS, SS, ES, CPL */
+	VMCB_CR2,        /* CR2 only */
+	VMCB_LBR,        /* DBGCTL, BR_FROM, BR_TO, LAST_EX_FROM, LAST_EX_TO */
+	VMCB_AVIC,       /* AVIC APIC_BAR, AVIC APIC_BACKING_PAGE,
+			  * AVIC PHYSICAL_TABLE pointer,
+			  * AVIC LOGICAL_TABLE pointer
+			  */
+	VMCB_DIRTY_MAX,
+};
 
-struct vcpu_svm {
+enum svm_reg {
+	VCPU_REGS_RAX = 0,
+	VCPU_REGS_RCX = 1,
+	VCPU_REGS_RDX = 2,
+	VCPU_REGS_RBX = 3,
+	VCPU_REGS_RSP = 4,
+	VCPU_REGS_RBP = 5,
+	VCPU_REGS_RSI = 6,
+	VCPU_REGS_RDI = 7,
+#ifdef CONFIG_X86_64
+	VCPU_REGS_R8 = 8,
+	VCPU_REGS_R9 = 9,
+	VCPU_REGS_R10 = 10,
+	VCPU_REGS_R11 = 11,
+	VCPU_REGS_R12 = 12,
+	VCPU_REGS_R13 = 13,
+	VCPU_REGS_R14 = 14,
+	VCPU_REGS_R15 = 15,
+#endif
+	VCPU_REGS_RIP,
+	NR_VCPU_REGS
+};
+
+#define NR_AUTOLOAD_MSRS 8
+
+struct vcpu_svm_orig {
 	struct kvm_vcpu vcpu;
 	struct vmcb *vmcb;
 	unsigned long vmcb_pa;
-	struct svm_cpu_data *svm_data;
+	struct svm_cpu_data_orig *svm_data;
 	uint64_t asid_generation;
 	uint64_t sysenter_esp;
 	uint64_t sysenter_eip;
@@ -62,7 +102,7 @@ struct vcpu_svm {
 	spinlock_t ir_list_lock;
 };
 
-struct svm_cpu_data {
+struct svm_cpu_data_orig {
 	int cpu;
 
 	u64 asid_generation;
@@ -71,71 +111,6 @@ struct svm_cpu_data {
 	struct kvm_ldttss_desc *tss_desc;
 
 	struct page *save_area;
-};
-
-enum {
-	VMCB_INTERCEPTS, /* Intercept vectors, TSC offset,
-			    pause filter count */
-	VMCB_PERM_MAP,   /* IOPM Base and MSRPM Base */
-	VMCB_ASID,	 /* ASID */
-	VMCB_INTR,	 /* int_ctl, int_vector */
-	VMCB_NPT,        /* npt_en, nCR3, gPAT */
-	VMCB_CR,	 /* CR0, CR3, CR4, EFER */
-	VMCB_DR,         /* DR6, DR7 */
-	VMCB_DT,         /* GDT, IDT */
-	VMCB_SEG,        /* CS, DS, SS, ES, CPL */
-	VMCB_CR2,        /* CR2 only */
-	VMCB_LBR,        /* DBGCTL, BR_FROM, BR_TO, LAST_EX_FROM, LAST_EX_TO */
-	VMCB_AVIC,       /* AVIC APIC_BAR, AVIC APIC_BACKING_PAGE,
-			  * AVIC PHYSICAL_TABLE pointer,
-			  * AVIC LOGICAL_TABLE pointer
-			  */
-	VMCB_DIRTY_MAX,
-};
-
-// ======================
-// End of KVM SVM defines
-// ======================
-
-DECLARE_PER_CPU(struct svm_vcpu *, local_vcpu);
-
-struct vmcs {
-	u32 revision_id;
-	u32 abort;
-	char data[0];
-};
-
-struct svm_capability {
-	u32 ept;
-	u32 vpid;
-	int has_load_efer:1;
-};
-
-extern struct svm_capability svm_capability;
-
-#define NR_AUTOLOAD_MSRS 8
-
-enum svm_reg {
-	VCPU_REGS_RAX = 0,
-	VCPU_REGS_RCX = 1,
-	VCPU_REGS_RDX = 2,
-	VCPU_REGS_RBX = 3,
-	VCPU_REGS_RSP = 4,
-	VCPU_REGS_RBP = 5,
-	VCPU_REGS_RSI = 6,
-	VCPU_REGS_RDI = 7,
-#ifdef CONFIG_X86_64
-	VCPU_REGS_R8 = 8,
-	VCPU_REGS_R9 = 9,
-	VCPU_REGS_R10 = 10,
-	VCPU_REGS_R11 = 11,
-	VCPU_REGS_R12 = 12,
-	VCPU_REGS_R13 = 13,
-	VCPU_REGS_R14 = 14,
-	VCPU_REGS_R15 = 15,
-#endif
-	VCPU_REGS_RIP,
-	NR_VCPU_REGS
 };
 
 struct svm_vcpu {
@@ -171,6 +146,8 @@ struct svm_vcpu {
 	unsigned long guest_kernel_gs_base;
 };
 
+DECLARE_PER_CPU(struct svm_vcpu *, local_vcpu);
+
 extern __init int svm_init(void);
 extern void svm_exit(void);
 extern void svm_cleanup(void);
@@ -181,18 +158,8 @@ extern int svm_init_npt(struct svm_vcpu *vcpu);
 extern int svm_create_npt(struct svm_vcpu *vcpu);
 extern void svm_destroy_npt(struct svm_vcpu *vcpu);
 
-extern int
-svm_do_npt_fault(struct svm_vcpu *vcpu, unsigned long gpa,
-		 unsigned long gva, int fault_flags);
+extern int svm_do_npt_fault(struct svm_vcpu *vcpu, unsigned long gpa,
+			    unsigned long gva, int fault_flags);
 
 extern void svm_npt_sync_vcpu(struct svm_vcpu *vcpu);
 extern void svm_npt_sync_individual_addr(struct svm_vcpu *vcpu, gpa_t gpa);
-
-static __always_inline unsigned long vmcs_readl(unsigned long field)
-{
-        unsigned long value;
-
-        asm volatile (ASM_VMX_VMREAD_RDX_RAX
-                      : "=a"(value) : "d"(field) : "cc");
-        return value;
-}
