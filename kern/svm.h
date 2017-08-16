@@ -145,10 +145,10 @@ struct svm_vcpu {
 	int launched;
 
 	struct mmu_notifier mmu_notifier;
-	spinlock_t ept_lock;
-	unsigned long ept_root;
-	unsigned long eptp;
-	bool ept_ad_enabled;
+	spinlock_t npt_lock;
+	unsigned long npt_root;
+	unsigned long nptp;
+	bool npt_ad_enabled;
 
 	u8  fail;
 	u64 exit_reason;

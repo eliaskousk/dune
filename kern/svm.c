@@ -1646,7 +1646,7 @@ static struct svm_vcpu * svm_create_vcpu(struct dune_config *conf)
 
 	spin_lock_init(&vcpu->npt_lock);
 	if (svm_init_npt(vcpu))
-		goto fail_ept;
+		goto fail_npt;
 	vcpu->nptp = construct_nptp(vcpu->npt_root);
 
 	svm_get_cpu(vcpu);

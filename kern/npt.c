@@ -1,5 +1,5 @@
 /**
- * npt.c - Support for AMD's Nested Page Tables
+ * npt.c - Support for AMD's Nested Page Tables (RVI)
  *
  * Authors:
  *   Adam Belay            <abelay@stanford.edu>
@@ -29,69 +29,39 @@
 #define NPT_LEVELS	4	/* 0 through 3 */
 #define HUGE_PAGE_SIZE	2097152
 
-static inline bool cpu_has_svm_npt_execute_only(void)
-{
-	return svm_capability.npt & VMX_EPT_EXECUTE_ONLY_BIT;
-}
-
-static inline bool cpu_has_svm_nptp_uncacheable(void)
-{
-	return svm_capability.npt & VMX_EPTP_UC_BIT;
-}
-
-static inline bool cpu_has_svm_nptp_writeback(void)
-{
-	return svm_capability.npt & VMX_EPTP_WB_BIT;
-}
-
-static inline bool cpu_has_svm_npt_2m_page(void)
-{
-	return svm_capability.npt & VMX_EPT_2MB_PAGE_BIT;
-}
-
-static inline bool cpu_has_svm_npt_1g_page(void)
-{
-	return svm_capability.npt & VMX_EPT_1GB_PAGE_BIT;
-}
-
-static inline bool cpu_has_svm_npt_4levels(void)
-{
-	return svm_capability.npt & VMX_EPT_PAGE_WALK_4_BIT;
-}
-
-#define VMX_EPT_FAULT_READ	0x01
-#define VMX_EPT_FAULT_WRITE	0x02
-#define VMX_EPT_FAULT_INS	0x04
+#define SVM_NPT_FAULT_READ	0x01
+#define SVM_NPT_FAULT_WRITE	0x02
+#define SVM_NPT_FAULT_INS	0x04
 
 typedef unsigned long npte_t;
 
-#define __EPTE_READ	0x01
-#define __EPTE_WRITE	0x02
-#define __EPTE_EXEC	0x04
-#define __EPTE_IPAT	0x40
-#define __EPTE_SZ	0x80
-#define __EPTE_A	0x100
-#define __EPTE_D	0x200
-#define __EPTE_PFNMAP	0x400 /* ignored by HW */
-#define __EPTE_TYPE(n)	(((n) & 0x7) << 3)
+#define __NPTE_READ	0x01
+#define __NPTE_WRITE	0x02
+#define __NPTE_EXEC	0x04
+#define __NPTE_IPAT	0x40
+#define __NPTE_SZ	0x80
+#define __NPTE_A	0x100
+#define __NPTE_D	0x200
+#define __NPTE_PFNMAP	0x400 /* ignored by HW */
+#define __NPTE_TYPE(n)	(((n) & 0x7) << 3)
 
 enum {
-	EPTE_TYPE_UC = 0, /* uncachable */
-	EPTE_TYPE_WC = 1, /* write combining */
-	EPTE_TYPE_WT = 4, /* write through */
-	EPTE_TYPE_WP = 5, /* write protected */
-	EPTE_TYPE_WB = 6, /* write back */
+	NPTE_TYPE_UC = 0, /* uncachable */
+	NPTE_TYPE_WC = 1, /* write combining */
+	NPTE_TYPE_WT = 4, /* write through */
+	NPTE_TYPE_WP = 5, /* write protected */
+	NPTE_TYPE_WB = 6, /* write back */
 };
 
-#define __EPTE_NONE	0
-#define __EPTE_FULL	(__EPTE_READ | __EPTE_WRITE | __EPTE_EXEC)
+#define __NPTE_NONE	0
+#define __NPTE_FULL	(__NPTE_READ | __NPTE_WRITE | __NPTE_EXEC)
 
-#define EPTE_ADDR	(~(PAGE_SIZE - 1))
-#define EPTE_FLAGS	(PAGE_SIZE - 1)
+#define NPTE_ADDR	(~(PAGE_SIZE - 1))
+#define NPTE_FLAGS	(PAGE_SIZE - 1)
 
 static inline uintptr_t npte_addr(npte_t npte)
 {
-	return (npte & EPTE_ADDR);
+	return (npte & NPTE_ADDR);
 }
 
 static inline uintptr_t npte_page_vaddr(npte_t npte)
@@ -101,17 +71,17 @@ static inline uintptr_t npte_page_vaddr(npte_t npte)
 
 static inline npte_t npte_flags(npte_t npte)
 {
-	return (npte & EPTE_FLAGS);
+	return (npte & NPTE_FLAGS);
 }
 
 static inline int npte_present(npte_t npte)
 {
-	return (npte & __EPTE_FULL) > 0;
+	return (npte & __NPTE_FULL) > 0;
 }
 
 static inline int npte_big(npte_t npte)
 {
-	return (npte & __EPTE_SZ) > 0;
+	return (npte & __NPTE_SZ) > 0;
 }
 
 #define ADDR_INVAL ((unsigned long) -1)
@@ -165,7 +135,7 @@ npt_lookup_gpa(struct svm_vcpu *vcpu, void *gpa, int level,
 	int i;
 	npte_t *dir = (npte_t *) __va(vcpu->npt_root);
 
-	for (i = EPT_LEVELS - 1; i > level; i--) {
+	for (i = NPT_LEVELS - 1; i > level; i--) {
 		int idx = ADDR_TO_IDX(gpa, i);
 
 		if (!npte_present(dir[idx])) {
@@ -180,7 +150,7 @@ npt_lookup_gpa(struct svm_vcpu *vcpu, void *gpa, int level,
 
 			memset(page, 0, PAGE_SIZE);
 			dir[idx] = npte_addr(virt_to_phys(page)) |
-				   __EPTE_FULL;
+				   __NPTE_FULL;
 		}
 
 		if (npte_big(dir[idx])) {
@@ -218,10 +188,10 @@ static void free_npt_page(npte_t npte)
 	struct page *page = pfn_to_page(npte_addr(npte) >> PAGE_SHIFT);
 
 	/* PFN mapppings are not backed by pages. */
-	if (npte & __EPTE_PFNMAP)
+	if (npte & __NPTE_PFNMAP)
 		return;
 
-	if (npte & __EPTE_WRITE)
+	if (npte & __NPTE_WRITE)
 		set_page_dirty(page);
 	put_page(page);
 }
@@ -231,10 +201,10 @@ static void free_npt_page_lock(npte_t npte)
 	struct page *page = pfn_to_page(npte_addr(npte) >> PAGE_SHIFT);
 
 	/* PFN mapppings are not backed by pages. */
-	if (npte & __EPTE_PFNMAP)
+	if (npte & __NPTE_PFNMAP)
 		return;
 
-	if (npte & __EPTE_WRITE)
+	if (npte & __NPTE_WRITE)
 		set_page_dirty_lock(page);
 	put_page(page);
 }
@@ -253,7 +223,7 @@ static void svm_free_npt(unsigned long npt_root)
 			npte_t *pmd = (npte_t *) npte_page_vaddr(pud[j]);
 			if (!npte_present(pud[j]))
 				continue;
-			if (npte_flags(pud[j]) & __EPTE_SZ) {
+			if (npte_flags(pud[j]) & __NPTE_SZ) {
 				free_npt_page_lock(pud[j]);
 				continue;
 			}
@@ -262,7 +232,7 @@ static void svm_free_npt(unsigned long npt_root)
 				npte_t *pte = (npte_t *) npte_page_vaddr(pmd[k]);
 				if (!npte_present(pmd[k]))
 					continue;
-				if (npte_flags(pmd[k]) & __EPTE_SZ) {
+				if (npte_flags(pmd[k]) & __NPTE_SZ) {
 					free_npt_page_lock(pmd[k]);
 					continue;
 				}
@@ -288,11 +258,11 @@ static void svm_free_npt(unsigned long npt_root)
 
 static int npt_clear_npte(npte_t *npte)
 {
-	if (*npte == __EPTE_NONE)
+	if (*npte == __NPTE_NONE)
 		return 0;
 
 	free_npt_page(*npte);
-	*npte = __EPTE_NONE;
+	*npte = __NPTE_NONE;
 
 	return 1;
 }
@@ -302,7 +272,7 @@ static int npt_clear_l1_npte(npte_t *npte)
 	int i;
 	npte_t *pte = (npte_t *) npte_page_vaddr(*npte);
 
-	if (*npte == __EPTE_NONE)
+	if (*npte == __NPTE_NONE)
 		return 0;
 
 	for (i = 0; i < PTRS_PER_PTE; i++) {
@@ -313,7 +283,7 @@ static int npt_clear_l1_npte(npte_t *npte)
 	}
 
 	free_page((uintptr_t) pte);
-	*npte = __EPTE_NONE;
+	*npte = __NPTE_NONE;
 
 	return 1;
 }
@@ -323,14 +293,14 @@ static int npt_clear_l2_npte(npte_t *npte)
 	int i, j;
 	npte_t *pmd = (npte_t *) npte_page_vaddr(*npte);
 
-	if (*npte == __EPTE_NONE)
+	if (*npte == __NPTE_NONE)
 		return 0;
 
 	for (i = 0; i < PTRS_PER_PMD; i++) {
 		npte_t *pte = (npte_t *) npte_page_vaddr(pmd[i]);
 		if (!npte_present(pmd[i]))
 			continue;
-		if (npte_flags(pmd[i]) & __EPTE_SZ) {
+		if (npte_flags(pmd[i]) & __NPTE_SZ) {
 			free_npt_page(pmd[i]);
 			continue;
 		}
@@ -347,7 +317,7 @@ static int npt_clear_l2_npte(npte_t *npte)
 
 	free_page((uintptr_t) pmd);
 
-	*npte = __EPTE_NONE;
+	*npte = __NPTE_NONE;
 
 	return 1;
 }
@@ -381,11 +351,11 @@ static int npt_set_pfnmap_npte(struct svm_vcpu *vcpu, int make_write,
 	}
 
 	if (pgprot2cachemode(vma->vm_page_prot) == _PAGE_CACHE_MODE_WB)
-		cache_control = EPTE_TYPE_WB;
+		cache_control = NPTE_TYPE_WB;
 	else if (pgprot2cachemode(vma->vm_page_prot) == _PAGE_CACHE_MODE_WC)
-		cache_control = EPTE_TYPE_WC;
+		cache_control = NPTE_TYPE_WC;
 	else
-		cache_control = EPTE_TYPE_UC;
+		cache_control = NPTE_TYPE_UC;
 
 	up_read(&mm->mmap_sem);
 
@@ -398,15 +368,15 @@ static int npt_set_pfnmap_npte(struct svm_vcpu *vcpu, int make_write,
 		return ret;
 	}
 
-	flags = __EPTE_READ | __EPTE_TYPE(cache_control) |
-		__EPTE_IPAT | __EPTE_PFNMAP;
+	flags = __NPTE_READ | __NPTE_TYPE(cache_control) |
+		__NPTE_IPAT | __NPTE_PFNMAP;
 	if (make_write)
-		flags |= __EPTE_WRITE;
+		flags |= __NPTE_WRITE;
 	if (vcpu->npt_ad_enabled) {
 		/* premark A/D to avoid extra memory references */
-		flags |= __EPTE_A;
+		flags |= __NPTE_A;
 		if (make_write)
-			flags |= __EPTE_D;
+			flags |= __NPTE_D;
 	}
 
 	if (npte_present(*npte))
@@ -462,15 +432,15 @@ static int npt_set_npte(struct svm_vcpu *vcpu, int make_write,
 			npt_clear_npte(npte);
 	}
 
-	flags = __EPTE_READ | __EPTE_EXEC |
-		__EPTE_TYPE(EPTE_TYPE_WB) | __EPTE_IPAT;
+	flags = __NPTE_READ | __NPTE_EXEC |
+		__NPTE_TYPE(NPTE_TYPE_WB) | __NPTE_IPAT;
 	if (make_write)
-		flags |= __EPTE_WRITE;
+		flags |= __NPTE_WRITE;
 	if (vcpu->npt_ad_enabled) {
 		/* premark A/D to avoid extra memory references */
-		flags |= __EPTE_A;
+		flags |= __NPTE_A;
 		if (make_write)
-			flags |= __EPTE_D;
+			flags |= __NPTE_D;
 	}
 
 	if (level) {
@@ -479,7 +449,7 @@ static int npt_set_npte(struct svm_vcpu *vcpu, int make_write,
 		get_page(page);
 		put_page(tmp);
 
-		flags |= __EPTE_SZ;
+		flags |= __NPTE_SZ;
 	}
 
 	*npte = npte_addr(page_to_phys(page)) | flags;
@@ -494,7 +464,7 @@ int svm_do_npt_fault(struct svm_vcpu *vcpu, unsigned long gpa,
 {
 	int ret;
 	unsigned long hva = gpa_to_hva(vcpu, current->mm, gpa);
-	int make_write = (fault_flags & VMX_EPT_FAULT_WRITE) ? 1 : 0;
+	int make_write = (fault_flags & SVM_NPT_FAULT_WRITE) ? 1 : 0;
 
 	pr_debug("npt: GPA: 0x%lx, GVA: 0x%lx, HVA: 0x%lx, flags: %x\n",
 		 gpa, gva, hva, fault_flags);
@@ -599,9 +569,9 @@ static int npt_check_page_accessed(struct svm_vcpu *vcpu,
 		return 0;
 	}
 
-	accessed = (*npte & __EPTE_A);
+	accessed = (*npte & __NPTE_A);
 	if (flush & accessed)
-		*npte = (*npte & ~__EPTE_A);
+		*npte = (*npte & ~__NPTE_A);
 	spin_unlock(&vcpu->npt_lock);
 
 	if (flush & accessed)
