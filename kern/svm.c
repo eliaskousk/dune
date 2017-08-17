@@ -151,13 +151,6 @@ static inline void npt_sync_individual_addr(u64 nptp, gpa_t gpa)
 		npt_sync_context(nptp);
 }
 
-static inline void __vmxon(u64 addr)
-{
-	asm volatile (ASM_VMX_VMXON_RAX
-	: : "a"(&addr), "m"(addr)
-	: "memory", "cc");
-}
-
 static inline void vpid_sync_vcpu_single(u16 vpid)
 {
 	if (vpid == 0)
