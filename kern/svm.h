@@ -4,8 +4,8 @@
 
 #include <linux/mmu_notifier.h>
 #include <linux/types.h>
-#include <asm/svm.h>
 #include <linux/kvm_types.h>
+#include <asm/svm.h>
 
 enum {
 	VMCB_INTERCEPTS, /* Intercept vectors, TSC offset,
@@ -48,59 +48,7 @@ enum svm_reg {
 	NR_VCPU_REGS
 };
 
-#define NR_AUTOLOAD_MSRS 8
-
-struct vcpu_svm_orig {
-	struct kvm_vcpu vcpu;
-	struct vmcb *vmcb;
-	unsigned long vmcb_pa;
-	struct svm_cpu_data_orig *svm_data;
-	uint64_t asid_generation;
-	uint64_t sysenter_esp;
-	uint64_t sysenter_eip;
-	uint64_t tsc_aux;
-
-	u64 next_rip;
-
-	u64 host_user_msrs[NR_HOST_SAVE_USER_MSRS];
-	struct {
-		u16 fs;
-		u16 gs;
-		u16 ldt;
-		u64 gs_base;
-	} host;
-
-	u32 *msrpm;
-
-	ulong nmi_iret_rip;
-
-	struct nested_state nested;
-
-	bool nmi_singlestep;
-
-	unsigned int3_injected;
-	unsigned long int3_rip;
-	u32 apf_reason;
-
-	/* cached guest cpuid flags for faster access */
-	bool nrips_enabled	: 1;
-
-	u32 ldr_reg;
-	struct page *avic_backing_page;
-	u64 *avic_physical_id_cache;
-	bool avic_is_running;
-
-	/*
-	 * Per-vcpu list of struct amd_svm_iommu_ir:
-	 * This is used mainly to store interrupt remapping information used
-	 * when update the vcpu affinity. This avoids the need to scan for
-	 * IRTE and try to match ga_tag in the IOMMU driver.
-	 */
-	struct list_head ir_list;
-	spinlock_t ir_list_lock;
-};
-
-struct svm_cpu_data_orig {
+struct svm_cpu_data {
 	int cpu;
 
 	u64 asid_generation;
@@ -111,10 +59,24 @@ struct svm_cpu_data_orig {
 	struct page *save_area;
 };
 
+static const u32 host_save_user_msrs[] = {
+	MSR_STAR,
+	MSR_LSTAR,
+	MSR_CSTAR,
+	MSR_SYSCALL_MASK,
+	MSR_KERNEL_GS_BASE,
+	MSR_FS_BASE,
+	MSR_IA32_SYSENTER_CS,
+	MSR_IA32_SYSENTER_ESP,
+	MSR_IA32_SYSENTER_EIP,
+	MSR_TSC_AUX,
+};
+
+#define NR_HOST_SAVE_USER_MSRS ARRAY_SIZE(host_save_user_msrs)
+
+
 struct svm_vcpu {
 	struct list_head list;
-	int cpu;
-	int vpid;
 	int launched;
 
 	struct mmu_notifier mmu_notifier;
@@ -132,13 +94,31 @@ struct svm_vcpu {
 	int shutdown;
 	int ret_code;
 
-	struct msr_autoload {
-		unsigned nr;
-		struct svm_msr_entry guest[NR_AUTOLOAD_MSRS];
-		struct svm_msr_entry host[NR_AUTOLOAD_MSRS];
-	} msr_autoload;
+	struct vmcb *vmcb;
+	unsigned long vmcb_pa;
+	struct svm_cpu_data *svm_data;
+	uint64_t asid_generation;
+	uint64_t sysenter_esp;
+	uint64_t sysenter_eip;
+	uint64_t tsc_aux;
+	u64 next_rip;
 
-	struct vmcs *vmcs;
+	u64 host_user_msrs[NR_HOST_SAVE_USER_MSRS];
+	struct {
+		u16 fs;
+		u16 gs;
+		u16 ldt;
+		u64 gs_base;
+	} host;
+
+	ulong nmi_iret_rip;
+	bool nmi_singlestep;
+	unsigned int3_injected;
+	unsigned long int3_rip;
+	u32 apf_reason;
+	/* cached guest cpuid flags for faster access */
+	bool nrips_enabled	: 1;
+
 	void *syscall_tbl;
 	struct dune_config *conf;
 	unsigned long guest_kernel_gs_base;
