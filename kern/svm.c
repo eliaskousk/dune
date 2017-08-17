@@ -878,30 +878,12 @@ static inline void mark_dirty_orig(struct vmcb *vmcb, int bit)
 
 static void recalc_intercepts_orig(struct vcpu_svm *svm)
 {
-	struct vmcb_control_area *c, *h;
-	struct nested_state *g;
-
 	mark_dirty(svm->vmcb, VMCB_INTERCEPTS);
-
-	if (!is_guest_mode(&svm->vcpu))
-		return;
-
-	c = &svm->vmcb->control;
-	h = &svm->nested.hsave->control;
-	g = &svm->nested;
-
-	c->intercept_cr = h->intercept_cr | g->intercept_cr;
-	c->intercept_dr = h->intercept_dr | g->intercept_dr;
-	c->intercept_exceptions = h->intercept_exceptions | g->intercept_exceptions;
-	c->intercept = h->intercept | g->intercept;
 }
 
 static inline struct vmcb *get_host_vmcb_orig(struct vcpu_svm *svm)
 {
-	if (is_guest_mode(&svm->vcpu))
-		return svm->nested.hsave;
-	else
-		return svm->vmcb;
+	return svm->vmcb;
 }
 
 static inline void set_cr_intercept_orig(struct vcpu_svm *svm, int bit)
@@ -1168,7 +1150,6 @@ static void init_vmcb_orig(struct vcpu_svm *svm)
 	}
 	svm->asid_generation = 0;
 
-	svm->nested.vmcb = 0;
 	svm->vcpu.arch.hflags = 0;
 
 	if (boot_cpu_has(X86_FEATURE_PAUSEFILTER)) {
@@ -1374,7 +1355,6 @@ static struct kvm_vcpu *svm_create_vcpu_orig(struct kvm *kvm, unsigned int id)
 	struct page *page;
 	struct page *msrpm_pages;
 	struct page *hsave_page;
-	struct page *nested_msrpm_pages;
 	int err;
 
 	svm = kmem_cache_zalloc(kvm_vcpu_cache, GFP_KERNEL);
@@ -1396,10 +1376,6 @@ static struct kvm_vcpu *svm_create_vcpu_orig(struct kvm *kvm, unsigned int id)
 	if (!msrpm_pages)
 		goto free_page1;
 
-	nested_msrpm_pages = alloc_pages(GFP_KERNEL, MSRPM_ALLOC_ORDER);
-	if (!nested_msrpm_pages)
-		goto free_page2;
-
 	hsave_page = alloc_page(GFP_KERNEL);
 	if (!hsave_page)
 		goto free_page3;
@@ -1418,13 +1394,8 @@ static struct kvm_vcpu *svm_create_vcpu_orig(struct kvm *kvm, unsigned int id)
 	 */
 	svm->avic_is_running = true;
 
-	svm->nested.hsave = page_address(hsave_page);
-
 	svm->msrpm = page_address(msrpm_pages);
 	svm_vcpu_init_msrpm_orig(svm->msrpm);
-
-	svm->nested.msrpm = page_address(nested_msrpm_pages);
-	svm_vcpu_init_msrpm_orig(svm->nested.msrpm);
 
 	svm->vmcb = page_address(page);
 	clear_page(svm->vmcb);
@@ -1438,8 +1409,6 @@ static struct kvm_vcpu *svm_create_vcpu_orig(struct kvm *kvm, unsigned int id)
 
 	free_page4:
 	__free_page(hsave_page);
-	free_page3:
-	__free_pages(nested_msrpm_pages, MSRPM_ALLOC_ORDER);
 	free_page2:
 	__free_pages(msrpm_pages, MSRPM_ALLOC_ORDER);
 	free_page1:
@@ -1547,8 +1516,6 @@ static void svm_free_vcpu_orig(struct kvm_vcpu *vcpu)
 
 	__free_page(pfn_to_page(svm->vmcb_pa >> PAGE_SHIFT));
 	__free_pages(virt_to_page(svm->msrpm), MSRPM_ALLOC_ORDER);
-	__free_page(virt_to_page(svm->nested.hsave));
-	__free_pages(virt_to_page(svm->nested.msrpm), MSRPM_ALLOC_ORDER);
 	kvm_vcpu_uninit(vcpu);
 	kmem_cache_free(kvm_vcpu_cache, svm);
 }
@@ -1767,13 +1734,6 @@ static void svm_vcpu_run_orig(struct kvm_vcpu *vcpu)
 	svm->vmcb->save.rax = vcpu->arch.regs[VCPU_REGS_RAX];
 	svm->vmcb->save.rsp = vcpu->arch.regs[VCPU_REGS_RSP];
 	svm->vmcb->save.rip = vcpu->arch.regs[VCPU_REGS_RIP];
-
-	/*
-	 * A vmexit emulation is required before the vcpu can be executed
-	 * again.
-	 */
-	if (unlikely(svm->nested.exit_required))
-		return;
 
 	pre_svm_run_orig(svm);
 
@@ -2283,32 +2243,6 @@ static int handle_exit_orig(struct kvm_vcpu *vcpu)
 	if (npt_enabled)
 		vcpu->arch.cr3 = svm->vmcb->save.cr3;
 
-	if (unlikely(svm->nested.exit_required)) {
-		nested_svm_vmexit(svm);
-		svm->nested.exit_required = false;
-
-		return 1;
-	}
-
-	if (is_guest_mode(vcpu)) {
-		int vmexit;
-
-		trace_kvm_nested_vmexit(svm->vmcb->save.rip, exit_code,
-					svm->vmcb->control.exit_info_1,
-					svm->vmcb->control.exit_info_2,
-					svm->vmcb->control.exit_int_info,
-					svm->vmcb->control.exit_int_info_err,
-					KVM_ISA_SVM);
-
-		vmexit = nested_svm_exit_special(svm);
-
-		if (vmexit == NESTED_EXIT_CONTINUE)
-			vmexit = nested_svm_exit_handled(svm);
-
-		if (vmexit == NESTED_EXIT_DONE)
-			return 1;
-	}
-
 	svm_complete_interrupts(svm);
 
 	if (svm->vmcb->control.exit_code == SVM_EXIT_ERR) {
@@ -2759,11 +2693,6 @@ static __init int svm_hardware_setup_orig(void)
 		kvm_has_tsc_control = true;
 		kvm_max_tsc_scaling_ratio = TSC_RATIO_MAX;
 		kvm_tsc_scaling_ratio_frac_bits = 32;
-	}
-
-	if (nested) {
-		printk(KERN_INFO "kvm: Nested Virtualization enabled\n");
-		kvm_enable_efer_bits(EFER_SVME | EFER_LMSLE);
 	}
 
 	for_each_possible_cpu(cpu) {
