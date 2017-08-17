@@ -511,7 +511,7 @@ static void svm_vcpu_load_orig(struct svm_vcpu *svm, int cpu)
 		rdmsrl(host_save_user_msrs[i], svm->host_user_msrs[i]);
 
 	if (static_cpu_has(X86_FEATURE_TSCRATEMSR)) {
-		u64 tsc_ratio = vcpu->arch.tsc_scaling_ratio;
+		u64 tsc_ratio = svm->tsc_scaling_ratio;
 		if (tsc_ratio != __this_cpu_read(current_tsc_ratio)) {
 			__this_cpu_write(current_tsc_ratio, tsc_ratio);
 			wrmsrl(MSR_AMD64_TSC_RATIO, tsc_ratio);
@@ -979,19 +979,19 @@ static void update_cr0_intercept_orig(struct vcpu_svm *svm)
 
 static void svm_set_cr0_orig(struct svm_vcpu *svm, unsigned long cr0)
 {
-	if (vcpu->arch.efer & EFER_LME) {
+	if (svm->efer & EFER_LME) {
 		if (!is_paging(vcpu) && (cr0 & X86_CR0_PG)) {
-			vcpu->arch.efer |= EFER_LMA;
+			svm->efer |= EFER_LMA;
 			svm->vmcb->save.efer |= EFER_LMA | EFER_LME;
 		}
 
 		if (is_paging(vcpu) && !(cr0 & X86_CR0_PG)) {
-			vcpu->arch.efer &= ~EFER_LMA;
+			svm->efer &= ~EFER_LMA;
 			svm->vmcb->save.efer &= ~(EFER_LMA | EFER_LME);
 		}
 	}
 
-	vcpu->arch.cr0 = cr0;
+	svm->cr0 = cr0;
 
 	if (!npt_enabled)
 		cr0 |= X86_CR0_PG | X86_CR0_WP;
@@ -1027,7 +1027,7 @@ static void init_sys_seg_orig(struct vmcb_seg *seg, uint32_t type)
 
 static void svm_set_efer_orig(struct svm_vcpu *svm, u64 efer)
 {
-	vcpu->arch.efer = efer;
+	svm->efer = efer;
 	if (!npt_enabled && !(efer & EFER_LMA))
 		efer &= ~EFER_LME;
 
@@ -1727,7 +1727,7 @@ static void svm_vcpu_run_orig(struct svm_vcpu *svm)
 
 	sync_lapic_to_cr8(vcpu);
 
-	svm->vmcb->save.cr2 = vcpu->arch.cr2;
+	svm->vmcb->save.cr2 = svm->cr2;
 
 	clgi_orig();
 
@@ -1819,7 +1819,7 @@ static void svm_vcpu_run_orig(struct svm_vcpu *svm)
 
 	local_irq_disable();
 
-	vcpu->arch.cr2 = svm->vmcb->save.cr2;
+	svm->cr2 = svm->vmcb->save.cr2;
 	svm->regs[VCPU_REGS_RAX] = svm->vmcb->save.rax;
 	svm->regs[VCPU_REGS_RSP] = svm->vmcb->save.rsp;
 	svm->regs[VCPU_REGS_RIP] = svm->vmcb->save.rip;
@@ -1845,8 +1845,8 @@ static void svm_vcpu_run_orig(struct svm_vcpu *svm)
 		svm->apf_reason = kvm_read_and_reset_pf_reason();
 
 	if (npt_enabled) {
-		vcpu->arch.regs_avail &= ~(1 << VCPU_EXREG_PDPTR);
-		vcpu->arch.regs_dirty &= ~(1 << VCPU_EXREG_PDPTR);
+		svm->regs_avail &= ~(1 << VCPU_EXREG_PDPTR);
+		svm->regs_dirty &= ~(1 << VCPU_EXREG_PDPTR);
 	}
 
 	/*
@@ -2223,12 +2223,12 @@ static int handle_exit_orig(struct svm_vcpu *svm)
 
 	trace_kvm_exit(exit_code, vcpu, KVM_ISA_SVM);
 
-	vcpu->arch.gpa_available = (exit_code == SVM_EXIT_NPF);
+	svm->gpa_available = (exit_code == SVM_EXIT_NPF);
 
 	if (!is_cr_intercept(svm, INTERCEPT_CR0_WRITE))
-		vcpu->arch.cr0 = svm->vmcb->save.cr0;
+		svm->cr0 = svm->vmcb->save.cr0;
 	if (npt_enabled)
-		vcpu->arch.cr3 = svm->vmcb->save.cr3;
+		svm->cr3 = svm->vmcb->save.cr3;
 
 	svm_complete_interrupts(svm);
 
