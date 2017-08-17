@@ -491,12 +491,11 @@ static const u32 host_save_user_msrs[] = {
 
 #define NR_HOST_SAVE_USER_MSRS ARRAY_SIZE(host_save_user_msrs)
 
-static void svm_vcpu_load_orig(struct kvm_vcpu *vcpu, int cpu)
+static void svm_vcpu_load_orig(struct svm_vcpu *svm, int cpu)
 {
-	struct vcpu_svm *svm = to_svm(vcpu);
 	int i;
 
-	if (unlikely(cpu != vcpu->cpu)) {
+	if (unlikely(cpu != svm->svm_data->cpu)) {
 		svm->asid_generation = 0;
 		mark_all_dirty(svm->vmcb);
 	}
@@ -570,12 +569,9 @@ static void svm_get_cpu(struct svm_vcpu *vcpu)
 	}
 }
 
-static void svm_vcpu_put_orig(struct kvm_vcpu *vcpu)
+static void svm_vcpu_put_orig(struct svm_vcpu *svm)
 {
-	struct vcpu_svm *svm = to_svm(vcpu);
 	int i;
-
-	avic_vcpu_put(vcpu);
 
 	++vcpu->stat.host_state_reload;
 	kvm_load_ldt(svm->host.ldt);
@@ -981,11 +977,8 @@ static void update_cr0_intercept_orig(struct vcpu_svm *svm)
 	}
 }
 
-static void svm_set_cr0_orig(struct kvm_vcpu *vcpu, unsigned long cr0)
+static void svm_set_cr0_orig(struct svm_vcpu *svm, unsigned long cr0)
 {
-	struct vcpu_svm *svm = to_svm(vcpu);
-
-#ifdef CONFIG_X86_64
 	if (vcpu->arch.efer & EFER_LME) {
 		if (!is_paging(vcpu) && (cr0 & X86_CR0_PG)) {
 			vcpu->arch.efer |= EFER_LMA;
@@ -997,7 +990,7 @@ static void svm_set_cr0_orig(struct kvm_vcpu *vcpu, unsigned long cr0)
 			svm->vmcb->save.efer &= ~(EFER_LMA | EFER_LME);
 		}
 	}
-#endif
+
 	vcpu->arch.cr0 = cr0;
 
 	if (!npt_enabled)
@@ -1032,7 +1025,7 @@ static void init_sys_seg_orig(struct vmcb_seg *seg, uint32_t type)
 	seg->base = 0;
 }
 
-static void svm_set_efer_orig(struct kvm_vcpu *vcpu, u64 efer)
+static void svm_set_efer_orig(struct svm_vcpu *svm, u64 efer)
 {
 	vcpu->arch.efer = efer;
 	if (!npt_enabled && !(efer & EFER_LMA))
@@ -1489,9 +1482,8 @@ static struct svm_vcpu * svm_create_vcpu(struct dune_config *conf)
 	return NULL;
 }
 
-static void svm_vcpu_reset_orig(struct kvm_vcpu *vcpu, bool init_event)
+static void svm_vcpu_reset_orig(struct svm_vcpu *svm, bool init_event)
 {
-	struct vcpu_svm *svm = to_svm(vcpu);
 	u32 dummy;
 	u32 eax = 1;
 
@@ -1510,10 +1502,8 @@ static void svm_vcpu_reset_orig(struct kvm_vcpu *vcpu, bool init_event)
 		avic_update_vapic_bar(svm, APIC_DEFAULT_PHYS_BASE);
 }
 
-static void svm_free_vcpu_orig(struct kvm_vcpu *vcpu)
+static void svm_free_vcpu_orig(struct svm_vcpu *svm)
 {
-	struct vcpu_svm *svm = to_svm(vcpu);
-
 	__free_page(pfn_to_page(svm->vmcb_pa >> PAGE_SHIFT));
 	__free_pages(virt_to_page(svm->msrpm), MSRPM_ALLOC_ORDER);
 	kvm_vcpu_uninit(vcpu);
@@ -1707,7 +1697,7 @@ static inline void stgi_orig(void)
 	asm volatile (__ex(SVM_STGI));
 }
 
-static void reload_tss_orig(struct kvm_vcpu *vcpu)
+static void reload_tss_orig(struct svm_vcpu *svm)
 {
 	int cpu = raw_smp_processor_id();
 
@@ -1727,13 +1717,11 @@ static void pre_svm_run_orig(struct vcpu_svm *svm)
 		new_asid(svm, sd);
 }
 
-static void svm_vcpu_run_orig(struct kvm_vcpu *vcpu)
+static void svm_vcpu_run_orig(struct svm_vcpu *svm)
 {
-	struct vcpu_svm *svm = to_svm(vcpu);
-
-	svm->vmcb->save.rax = vcpu->arch.regs[VCPU_REGS_RAX];
-	svm->vmcb->save.rsp = vcpu->arch.regs[VCPU_REGS_RSP];
-	svm->vmcb->save.rip = vcpu->arch.regs[VCPU_REGS_RIP];
+	svm->vmcb->save.rax = svm->regs[VCPU_REGS_RAX];
+	svm->vmcb->save.rsp = svm->regs[VCPU_REGS_RSP];
+	svm->vmcb->save.rip = svm->regs[VCPU_REGS_RIP];
 
 	pre_svm_run_orig(svm);
 
@@ -1832,9 +1820,9 @@ static void svm_vcpu_run_orig(struct kvm_vcpu *vcpu)
 	local_irq_disable();
 
 	vcpu->arch.cr2 = svm->vmcb->save.cr2;
-	vcpu->arch.regs[VCPU_REGS_RAX] = svm->vmcb->save.rax;
-	vcpu->arch.regs[VCPU_REGS_RSP] = svm->vmcb->save.rsp;
-	vcpu->arch.regs[VCPU_REGS_RIP] = svm->vmcb->save.rip;
+	svm->regs[VCPU_REGS_RAX] = svm->vmcb->save.rax;
+	svm->regs[VCPU_REGS_RSP] = svm->vmcb->save.rsp;
+	svm->regs[VCPU_REGS_RIP] = svm->vmcb->save.rip;
 
 	if (unlikely(svm->vmcb->control.exit_code == SVM_EXIT_NMI))
 		kvm_before_handle_nmi(&svm->vcpu);
@@ -2203,7 +2191,7 @@ static int vmmcall_interception_orig(struct vcpu_svm *svm)
 	return kvm_emulate_hypercall(&svm->vcpu);
 }
 
-static void svm_handle_external_intr_orig(struct kvm_vcpu *vcpu)
+static void svm_handle_external_intr_orig(struct svm_vcpu *svm)
 {
 	local_irq_enable();
 	/*
@@ -2214,7 +2202,7 @@ static void svm_handle_external_intr_orig(struct kvm_vcpu *vcpu)
 	local_irq_disable();
 }
 
-static void svm_get_exit_info_orig(struct kvm_vcpu *vcpu, u64 *info1, u64 *info2)
+static void svm_get_exit_info_orig(struct svm_vcpu *svm, u64 *info1, u64 *info2)
 {
 	struct vmcb_control_area *control = &to_svm(vcpu)->vmcb->control;
 
@@ -2228,9 +2216,8 @@ static int is_external_interrupt_orig(u32 info)
 	return info == (SVM_EVTINJ_VALID | SVM_EVTINJ_TYPE_INTR);
 }
 
-static int handle_exit_orig(struct kvm_vcpu *vcpu)
+static int handle_exit_orig(struct svm_vcpu *svm)
 {
-	struct vcpu_svm *svm = to_svm(vcpu);
 	struct kvm_run *kvm_run = vcpu->run;
 	u32 exit_code = svm->vmcb->control.exit_code;
 
